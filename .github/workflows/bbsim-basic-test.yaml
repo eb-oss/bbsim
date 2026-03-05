@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run BBSim Tests
-        uses: ./.github/actions/bbsim-tests
+        uses: eb-oss/voltha-shared-workflows/.github/actions/bbsim-tests@add-sanity-test
         with:
           branch: master
           test-targets: |
