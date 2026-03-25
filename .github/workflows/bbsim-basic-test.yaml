@@ -6,11 +6,35 @@ on:
   pull_request:
 
 jobs:
-  bbsim-tests:
+  start-runner:
+    name: Start self-hosted EC2 runner
     runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.start-ec2-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Start EC2 runner
+        id: start-ec2-runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.GH_TO_AWS_KEY }}
+          ec2-image-id: ami-04983a9663ae67631
+          ec2-instance-type: t2.xlarge
+          subnet-id: subnet-89b12eef
+          security-group-id: sg-0b1ef1cd9c5ce3953
+  bbsim-tests:
+    needs: start-runner
+    runs-on: ${{ needs.start-runner.outputs.label }}
     steps:
       - name: Run BBSim Tests
-        uses: ./.github/actions/bbsim-tests
+        uses: eb-oss/voltha-shared-workflows/.github/actions/bbsim-tests@add-sanity-test
         with:
           branch: master
           test-targets: |
@@ -20,3 +44,24 @@ jobs:
               teardown: true
               logging: true
               vgcEnabled: false
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - bbsim-tests
+    runs-on: ubuntu-latest
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.GH_TO_AWS_KEY }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
